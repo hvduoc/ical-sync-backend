@@ -1,0 +1,11 @@
+{
+  "name": "ical-sync-backend",
+  "version": "1.0.0",
+  "description": "High-performance iCal sync backend without Google API",
+  "main": "api/data.js",
+  "dependencies": {
+    "@vercel/kv": "^1.0.1",
+    "csv-parse": "^5.5.3",
+    "node-ical": "^0.15.1"
+  }
+}
