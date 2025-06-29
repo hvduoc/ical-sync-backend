@@ -6,7 +6,7 @@ const { parse } = require('csv-parse/sync');
 // --- CẤU HÌNH ---
 const CSV_URL = process.env.GOOGLE_SHEET_CSV_URL;
 const CACHE_KEY = 'booking_data';
-const CACHE_TTL_SECONDS = 3600; // Cache dữ liệu trong 1 giờ
+const CACHE_TTL_SECONDS = 900; // Cache dữ liệu trong 15 phút
 
 // --- HÀM SET CORS HEADERS ---
 // Hàm này sẽ thêm các header cần thiết vào phản hồi
