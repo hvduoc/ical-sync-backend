@@ -1,38 +1,51 @@
-// Forcing a new deployment
 // Import các thư viện cần thiết
 const { kv } = require('@vercel/kv');
 const ical = require('node-ical');
 const { parse } = require('csv-parse/sync');
 
 // --- CẤU HÌNH ---
-const CSV_URL = process.env.GOOGLE_SHEET_CSV_URL; // Lấy URL từ biến môi trường
+const CSV_URL = process.env.GOOGLE_SHEET_CSV_URL;
 const CACHE_KEY = 'booking_data';
-const CACHE_TTL_SECONDS = 3600; // Cache dữ liệu trong 1 giờ (3600 giây)
+const CACHE_TTL_SECONDS = 3600; // Cache dữ liệu trong 1 giờ
 
-// Hàm xử lý chính, được gọi khi API /api/data được truy cập
-module.exports = async (req, res) => {
+// --- HÀM SET CORS HEADERS ---
+// Hàm này sẽ thêm các header cần thiết vào phản hồi
+const allowCors = fn => async (req, res) => {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Cho phép tất cả các nguồn
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  return await fn(req, res);
+};
+
+// --- HÀM XỬ LÝ CHÍNH ---
+const handler = async (req, res) => {
   try {
-    // 1. Kiểm tra cache trước
     let cachedData = await kv.get(CACHE_KEY);
     if (cachedData) {
       console.log('Serving data from cache.');
       return res.status(200).json(cachedData);
     }
 
-    // 2. Nếu không có cache, bắt đầu quá trình đồng bộ
     console.log('Cache is empty. Starting sync process...');
     if (!CSV_URL) {
       throw new Error('GOOGLE_SHEET_CSV_URL is not defined in environment variables.');
     }
 
-    // 2a. Lấy và phân tích cú pháp file CSV từ link công khai
     const csvResponse = await fetch(CSV_URL);
     if (!csvResponse.ok) {
         throw new Error(`Failed to fetch CSV: ${csvResponse.statusText}`);
     }
     const csvText = await csvResponse.text();
     const rooms = parse(csvText, {
-      columns: true, // Dòng đầu tiên là tên cột
+      columns: true,
       skip_empty_lines: true,
     });
 
@@ -40,7 +53,6 @@ module.exports = async (req, res) => {
       return res.status(200).json({ status: 'success', message: 'No rooms found to sync.' });
     }
 
-    // 3. Tạo các promise để tìm nạp tất cả iCal đồng thời
     const fetchPromises = rooms.map(room => {
       const roomName = room.Ten_Phong;
       const iCalLink = room.Link_iCal;
@@ -53,10 +65,8 @@ module.exports = async (req, res) => {
       return Promise.resolve(null);
     });
 
-    // 4. Chạy tất cả các promise song song
     const results = await Promise.all(fetchPromises);
 
-    // 5. Xử lý kết quả và chuẩn bị dữ liệu để ghi
     let allBookings = [];
     results.forEach(result => {
       if (result && result.events) {
@@ -74,18 +84,15 @@ module.exports = async (req, res) => {
       }
     });
     
-    // 6. Chuẩn bị dữ liệu cuối cùng để cache và trả về
     const finalData = {
-        rooms: rooms, // Trả về cả thông tin phòng
+        rooms: rooms,
         bookings: allBookings,
         last_updated: new Date().toISOString()
     };
 
-    // 7. Lưu dữ liệu vào Vercel KV cache
     await kv.set(CACHE_KEY, finalData, { ex: CACHE_TTL_SECONDS });
     console.log(`Sync completed. Synced ${allBookings.length} bookings. Data is now cached.`);
 
-    // 8. Trả về dữ liệu mới
     res.status(200).json(finalData);
 
   } catch (error) {
@@ -94,7 +101,6 @@ module.exports = async (req, res) => {
   }
 };
 
-// Hàm tiện ích để định dạng ngày tháng
 function formatDate(date) {
   if (!date) return '';
   const d = new Date(date);
@@ -103,4 +109,6 @@ function formatDate(date) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
-// Trigger redeploy
+
+// Bọc hàm handler của chúng ta bằng hàm allowCors
+module.exports = allowCors(handler);
