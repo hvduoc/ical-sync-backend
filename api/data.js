@@ -4,15 +4,15 @@ const ical = require('node-ical');
 const { parse } = require('csv-parse/sync');
 
 // --- CẤU HÌNH ---
-const CSV_URL = process.env.GOOGLE_SHEET_CSV_URL;
-const CACHE_KEY = 'booking_data';
-const CACHE_TTL_SECONDS = 900; // Cache dữ liệu trong 15 phút
+const ROOM_LIST_CSV_URL = process.env.GOOGLE_SHEET_CSV_URL;
+const SETTING_CSV_URL = process.env.SETTING_CSV_URL; // <-- BIẾN MỚI
+const CACHE_KEY = 'booking_data_v2'; // Đổi key để đảm bảo cache cũ bị xóa
+const CACHE_TTL_SECONDS = 900; 
 
 // --- HÀM SET CORS HEADERS ---
-// Hàm này sẽ thêm các header cần thiết vào phản hồi
 const allowCors = fn => async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*'); // Cho phép tất cả các nguồn
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
@@ -35,24 +35,33 @@ const handler = async (req, res) => {
     }
 
     console.log('Cache is empty. Starting sync process...');
-    if (!CSV_URL) {
-      throw new Error('GOOGLE_SHEET_CSV_URL is not defined in environment variables.');
+    if (!ROOM_LIST_CSV_URL || !SETTING_CSV_URL) { // Kiểm tra cả hai URL
+      throw new Error('GOOGLE_SHEET_CSV_URL or SETTING_CSV_URL is not defined.');
     }
 
-    const csvResponse = await fetch(CSV_URL);
-    if (!csvResponse.ok) {
-        throw new Error(`Failed to fetch CSV: ${csvResponse.statusText}`);
-    }
-    const csvText = await csvResponse.text();
-    const rooms = parse(csvText, {
-      columns: true,
-      skip_empty_lines: true,
-    });
+    // *** BẮT ĐẦU THAY ĐỔI: Đọc dữ liệu từ cả hai sheet đồng thời ***
+    const [roomDataResponse, settingDataResponse] = await Promise.all([
+        fetch(ROOM_LIST_CSV_URL).then(res => res.text()),
+        fetch(SETTING_CSV_URL).then(res => res.text())
+    ]);
 
-    if (rooms.length === 0) {
-      return res.status(200).json({ status: 'success', message: 'No rooms found to sync.' });
-    }
+    const rooms = parse(roomDataResponse, { columns: true, skip_empty_lines: true });
+    const settingsRaw = parse(settingDataResponse, { columns: true, skip_empty_lines: true });
+    
+    // Xử lý dữ liệu setting để tạo cấu trúc dễ sử dụng
+    const settings = {
+        regions: [...new Set(settingsRaw.map(item => item.Khu_Vuc))],
+        provincesByRegion: settingsRaw.reduce((acc, item) => {
+            if (!acc[item.Khu_Vuc]) {
+                acc[item.Khu_Vuc] = [];
+            }
+            acc[item.Khu_Vuc].push(item.Tinh_Thanh);
+            return acc;
+        }, {})
+    };
+    // *** KẾT THÚC THAY ĐỔI ***
 
+    // Phần còn lại của logic tìm nạp iCal không thay đổi
     const fetchPromises = rooms.map(room => {
       const roomName = room.Ten_Phong;
       const iCalLink = room.Link_iCal;
@@ -73,10 +82,8 @@ const handler = async (req, res) => {
         for (const event of Object.values(result.events)) {
           if (event.type === 'VEVENT') {
             allBookings.push({
-              uid: event.uid,
-              roomName: result.roomName,
-              start: formatDate(event.start),
-              end: formatDate(event.end),
+              uid: event.uid, roomName: result.roomName,
+              start: formatDate(event.start), end: formatDate(event.end),
               summary: event.summary || 'Reserved',
             });
           }
@@ -84,11 +91,14 @@ const handler = async (req, res) => {
       }
     });
     
+    // *** BẮT ĐẦU THAY ĐỔI: Thêm 'settings' vào dữ liệu trả về ***
     const finalData = {
         rooms: rooms,
         bookings: allBookings,
+        settings: settings, // Thêm dữ liệu setting
         last_updated: new Date().toISOString()
     };
+    // *** KẾT THÚC THAY ĐỔI ***
 
     await kv.set(CACHE_KEY, finalData, { ex: CACHE_TTL_SECONDS });
     console.log(`Sync completed. Synced ${allBookings.length} bookings. Data is now cached.`);
@@ -110,5 +120,4 @@ function formatDate(date) {
   return `${year}-${month}-${day}`;
 }
 
-// Bọc hàm handler của chúng ta bằng hàm allowCors
 module.exports = allowCors(handler);
