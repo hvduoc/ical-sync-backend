@@ -28,11 +28,17 @@ const allowCors = fn => async (req, res) => {
 // --- HÀM XỬ LÝ CHÍNH ---
 const handler = async (req, res) => {
   try {
-    let cachedData = await kv.get(CACHE_KEY);
-    if (cachedData) {
-      console.log('Serving data from cache.');
-      return res.status(200).json(cachedData);
-    }
+    if (req.query?.forceSync === '1') {
+  await kv.del(CACHE_KEY);
+  console.log('Force refresh: cache cleared manually.');
+}
+
+let cachedData = await kv.get(CACHE_KEY);
+if (cachedData) {
+  console.log('Serving data from cache.');
+  return res.status(200).json(cachedData);
+}
+
 
     console.log('Cache is empty. Starting sync process...');
     if (!ROOM_LIST_CSV_URL || !SETTING_CSV_URL) { // Kiểm tra cả hai URL
