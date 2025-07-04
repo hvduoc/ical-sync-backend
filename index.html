@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trang quản lý phòng</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- *** DÁN TOÀN BỘ KHỐI NÀY VÀO ĐỂ THAY THẾ CHO KHỐI <style> CŨ *** -->
+<style>
+    body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #f8f9fa; font-size: 13px; }
+    
+    /* *** BẮT ĐẦU THAY ĐỔI: CSS cho việc cố định header và cột *** */
+    .calendar-grid-container { 
+        overflow: auto; /* Bật cuộn cho cả hai chiều */
+        max-height: 75vh; /* Giới hạn chiều cao, tạo khung cuộn riêng cho bảng */
+    }
+    #calendar-header th { /* Áp dụng cho TẤT CẢ các ô trong thead */
+        position: -webkit-sticky;
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background-color: #f1f5f9; /* Màu nền của header */
+    }
+    .sticky-col { 
+        position: -webkit-sticky; 
+        position: sticky; 
+        left: 0; 
+        z-index: 10; 
+        background-color: #fff; 
+        box-shadow: 2px 0 5px -2px rgba(0,0,0,0.1); 
+        min-width: 110px; max-width: 110px; 
+    }
+    #calendar-header .sticky-col { /* Ô góc trên bên trái */
+        z-index: 30; /* Luôn ở trên cùng */
+        background-color: #f1f5f9;
+    }
+    /* *** KẾT THÚC THAY ĐỔI *** */
+
+    .day-cell { min-width: 36px; height: 32px; text-align: center; border-right: 1px solid #e9ecef; border-bottom: 1px solid #e9ecef; font-size: 9px; cursor: pointer; user-select: none; }
+    .day-header { min-width: 36px; padding: 2px; font-size: 11px; }
+    .booked, .past-day, .soft-hold { background-color: #f1f3f5; color: #adb5bd; cursor: not-allowed; }
+    .booked::after { content: 'x'; font-size: 12px; font-weight: 500; }
+    .soft-hold::after { content: '...'; font-size: 14px; font-weight: 700; color: #f59e0b; }
+    .selected-day { background-color: #007bff !important; color: white; box-shadow: inset 0 0 0 1px white; }
+    .price { color: #28a745; font-weight: 500; font-size: 10px; }
+    .today-header-span { background-color: #007bff; color: white; border-radius: 4px; padding: 1px 3px; }
+    .today-line { border-left: 2px solid #007bff !important; }
+    #selection-action-bar, #contact-modal { transition: all 0.3s ease; }
+    #loader { border: 8px solid #f3f3f3; border-radius: 50%; border-top: 8px solid #007bff; width: 60px; height: 60px; animation: spin 1.5s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-gray-100 text-gray-800 pb-24">
+
+    <div class="container mx-auto p-4 sm:p-6">
+        <header class="mb-4">
+            <h1 class="text-xl font-bold text-gray-900">Trang tổng quan Lịch phòng</h1>
+            <p class="text-gray-600 text-xs">Nhấp và kéo chuột trên một hàng để chọn khoảng ngày.</p>
+        </header>
+
+        <!-- *** DÁN ĐOẠN MÃ NÀY VÀO *** -->
+        <div id="controls" class="flex flex-col sm:flex-row items-center justify-between mb-3 p-2 bg-white rounded-lg shadow-sm">
+        <!-- Container cho các nút bên trái, sẽ xếp chồng trên mobile -->
+        <div class="flex flex-col items-center w-full sm:w-auto sm:flex-row">
+        <!-- Nhóm nút điều khiển tháng (Sẽ ở hàng trên trên mobile) -->
+        <div class="flex items-center space-x-2 mb-3 sm:mb-0 sm:mr-4">
+            <button id="prev-month" class="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded-md font-semibold transition-colors text-xs">&lt;</button>
+            <h2 id="current-month-year" class="text-base font-bold text-center w-32"></h2>
+            <button id="next-month" class="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded-md font-semibold transition-colors text-xs">&gt;</button>
+        </div>
+        <!-- Nhóm nút hành động (Sẽ ở hàng dưới trên mobile) -->
+        <div class="flex items-center flex-wrap gap-2 justify-center">
+            <button id="today-btn" class="px-3 py-1 bg-blue-500 text-white hover:bg-blue-600 rounded-md font-semibold transition-colors text-xs">Hôm nay</button>
+            <button id="sync-btn" class="px-3 py-1 bg-teal-500 text-white hover:bg-teal-600 rounded-md font-semibold transition-colors text-xs flex items-center">
+                <svg id="sync-icon" class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5"></path></svg>
+                <span id="sync-text">Cập nhật</span>
+            </button>
+            <button id="add-room-btn" class="px-3 py-1 bg-green-500 text-white hover:bg-green-600 rounded-md font-semibold transition-colors text-xs">Thêm phòng</button>
+        </div>
+        </div>
+        <!-- *** BẮT ĐẦU THAY ĐỔI: Thêm bộ lọc Khu vực & Tỉnh thành *** -->
+        <div class="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+        <select id="region-filter" class="w-full sm:w-auto p-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        <option value="all">Tất cả Khu vực</option>
+        </select>
+        <select id="province-filter" class="w-full sm:w-auto p-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        <option value="all">Tất cả Tỉnh/Thành</option>
+        </select>
+        <select id="building-filter" class="w-full sm:w-auto p-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        <option value="all">Tất cả Tòa nhà</option>
+        </select>
+        </div>
+        <!-- *** KẾT THÚC THAY ĐỔI *** -->
+        </div>
+        
+        <div id="status-bar" class="mb-3 p-2 bg-gray-100 text-gray-700 text-xs rounded-lg border">Đang tải dữ liệu...</div>
+        <div id="loader-container" class="flex justify-center items-center h-64"><div id="loader"></div></div>
+        <div id="calendar-wrapper" class="hidden"><div class="calendar-grid-container bg-white shadow-md rounded-lg"><table class="w-full border-collapse"><thead id="calendar-header" class="bg-gray-100 sticky-header"></thead><tbody id="calendar-body"></tbody></table></div></div>
+        <!-- *** BẮT ĐẦU BỔ SUNG MODAL THÊM PHÒNG *** -->
+        <div id="add-room-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 opacity-0 pointer-events-none" style="transition: all 0.3s ease;">
+            <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
+                <h3 class="text-lg font-bold mb-4">Thêm phòng mới vào hệ thống</h3>
+                <form id="add-room-form" class="space-y-4">
+                    <div><label class="block text-sm font-medium text-gray-700">Tên Phòng (*)</label><input type="text" name="tenPhong" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                    <!-- *** BẮT ĐẦU BỔ SUNG: Các ô nhập liệu mới cho Form *** -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                    <label class="block text-sm font-medium text-gray-700">Khu vực (*)</label>
+                    <select name="khuVuc" id="form-region-select" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></select>
+                    </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Tỉnh/Thành (*)</label>
+                <select name="tinhThanh" id="form-province-select" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></select>
+            </div>
+        </div>
+        <!-- *** KẾT THÚC BỔ SUNG *** -->
+                    <div><label class="block text-sm font-medium text-gray-700">Tòa nhà</label><input type="text" name="toaNha" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">Link Airbnb</label><input type="text" name="linkAirbnb" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">Link iCal (*)</label><input type="url" name="linkIcal" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">Giá Phòng</label><input type="text" name="giaPhong" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">Liên Hệ</label><input type="text" name="lienHe" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                    <div class="flex justify-end space-x-3 pt-4">
+                        <button type="button" id="close-add-room-modal-btn" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300">Hủy</button>
+                        <button type="submit" id="save-room-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Lưu phòng</button>
+                    </div>
+                    <div id="add-room-status" class="text-sm mt-2"></div>
+                </form>
+            </div>
+        </div>
+        <!-- *** KẾT THÚC BỔ SUNG *** -->
+        <div id="error-message" class="hidden text-center p-8 bg-red-100 text-red-700 rounded-lg"></div>
+    </div>
+    
+    <!-- Modal lien he -->
+    <div id="contact-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 opacity-0 pointer-events-none">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 class="text-lg font-bold mb-2">Soạn tin nhắn cho khách</h3>
+            <p id="modal-info" class="text-gray-700 mb-4"></p>
+            <div class="space-y-3">
+                 <a id="call-btn" href="#" class="block w-full text-center bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 font-semibold">📞 Gọi điện</a>
+                 <a id="zalo-btn" href="#" target="_blank" class="block w-full text-center bg-blue-400 text-white px-4 py-2 rounded-md hover:bg-blue-500 font-semibold">💬 Zalo</a>
+                 <a id="whatsapp-btn" href="#" target="_blank" class="block w-full text-center bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 font-semibold">💬 WhatsApp</a>
+                 <a id="deposit-btn" href="#" class="block w-full text-center bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 font-semibold">💳 Chuyển khoản cọc</a>
+            </div>
+            <button id="close-modal-btn" class="mt-4 w-full text-center bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300">Quay lại</button>
+        </div>
+    </div>
+    
+    <!-- Thanh hanh dong khi chon ngay -->
+    <div id="selection-action-bar" class="fixed bottom-0 left-0 right-0 bg-white p-3 shadow-lg border-t transform translate-y-full z-20">
+        <div class="container mx-auto flex items-center justify-between">
+            <div>
+                <p class="font-bold text-gray-800 text-sm">Đã chọn:</p>
+                <p id="selection-info-text" class="text-xs text-blue-600"></p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button id="block-room-btn" class="px-3 py-1.5 bg-yellow-500 text-white rounded-md font-semibold hover:bg-yellow-600 text-sm">Giữ chỗ tạm</button>
+                <button id="compose-message-btn" class="px-3 py-1.5 bg-green-500 text-white rounded-md font-semibold hover:bg-green-600 text-sm">Soạn tin</button>
+                <button id="cancel-selection-btn" class="px-3 py-1.5 bg-gray-300 text-gray-800 rounded-md font-semibold hover:bg-gray-400 text-sm">Hủy</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+    // --- PHAN CAI DAT ---
+    const API_URL = '/api/data';
+    const WRITE_API_URL = 'https://script.google.com/macros/s/AKfycbyp2ntP4Jf0AGHXSQdxNW4kQRNjqElsEmnqsrxMdDWDk-KJ3cAN8LvJDgFfoECASWEz/exec';
+    const DEFAULT_PHONE = '84905697678';
+    const VIETNAM_REGIONS = {
+        "Miền Bắc": ["Tp. Hà Nội"],
+        "Miền Trung": ["Tp. Đà Nẵng"],
+        "Miền Nam": ["TP. Hồ Chí Minh"]
+    };
+    const DAYS_TO_SHOW_PAST = 3; // Chỉ hiển thị 3 ngày trong quá khứ
+    const MONTHS_TO_SHOW_FUTURE = 6; // Hiển thị 6 tháng trong tương lai
+    // --- KHAI BAO BIEN ---
+    const el = {
+        calendarBody: document.getElementById('calendar-body'),
+        contactModal: document.getElementById('contact-modal'),
+        modalInfo: document.getElementById('modal-info'),
+        callBtn: document.getElementById('call-btn'),
+        zaloBtn: document.getElementById('zalo-btn'),
+        whatsappBtn: document.getElementById('whatsapp-btn'),
+        closeModalBtn: document.getElementById('close-modal-btn'),
+        selectionActionBar: document.getElementById('selection-action-bar'),
+        selectionInfoText: document.getElementById('selection-info-text'),
+        composeMessageBtn: document.getElementById('compose-message-btn'),
+        cancelSelectionBtn: document.getElementById('cancel-selection-btn'),
+        blockRoomBtn: document.getElementById('block-room-btn'),
+        calendarGrid: document.querySelector('.calendar-grid-container'),
+        calendarHeader: document.getElementById('calendar-header'),
+        monthYearDisplay: document.getElementById('current-month-year'),
+        prevMonthBtn: document.getElementById('prev-month'),
+        nextMonthBtn: document.getElementById('next-month'),
+        todayBtn: document.getElementById('today-btn'),
+        regionFilter: document.getElementById('region-filter'),
+        provinceFilter: document.getElementById('province-filter'),
+        buildingFilter: document.getElementById('building-filter'),
+        loaderContainer: document.getElementById('loader-container'),
+        calendarWrapper: document.getElementById('calendar-wrapper'),
+        errorMessageDiv: document.getElementById('error-message'),
+        statusBar: document.getElementById('status-bar'),
+        syncBtn: document.getElementById('sync-btn'),
+        syncIcon: document.getElementById('sync-icon'),
+        syncText: document.getElementById('sync-text'),
+        depositBtn: document.getElementById('deposit-btn'),
+        addRoomBtn: document.getElementById('add-room-btn'),
+        addRoomModal: document.getElementById('add-room-modal'),
+        addRoomForm: document.getElementById('add-room-form'),
+        closeAddRoomModalBtn: document.getElementById('close-add-room-modal-btn'),
+        saveRoomBtn: document.getElementById('save-room-btn'),
+        addRoomStatus: document.getElementById('add-room-status'),
+        formRegionSelect: document.getElementById('form-region-select'),
+        formProvinceSelect: document.getElementById('form-province-select'),
+        syncSpinner: document.querySelector('#sync-btn svg:not(#sync-icon)')
+    };
+
+    let allRooms = [];
+    let allBookings = [];
+    let appData = { settings: { regions: [], provincesByRegion: {} } };
+    let displayDate = new Date();
+    let isSelecting = false;
+    let selection = { start: null, end: null, room: null };
+
+    // --- CAC HAM CHINH ---
+
+    async function fetchData(isSyncing = false) {
+        if (!isSyncing) {
+            showLoader(true);
+            el.statusBar.textContent = "Đang kết nối với máy chủ...";
+        }
+        try {
+            const r = await fetch(`${API_URL}?cache-bust=${new Date().getTime()}`);
+            if (!r.ok) throw new Error(`Lỗi mạng: ${r.statusText}`);
+            appData = await r.json();
+            if (appData.status === 'error') throw new Error(appData.message);
+
+            allRooms = (appData.rooms || []).map(r => ({
+                name: r.Ten_Phong,
+                building: r.Toa_nha,
+                link: r.Link_Airbnb,
+                price: r.Gia_Phong,
+                contact: r.Lien_He,
+                building_region: r.Khu_Vuc,
+                building_province: r.Tinh_Thanh
+            }));
+            allBookings = (appData.bookings || []).map(b => ({
+                ...b,
+                startDate: parseDateFromStr(b.start),
+                endDate: parseDateFromStr(b.end)
+            }));
+
+            el.statusBar.innerHTML = `Tải thành công: <span class="font-bold">${allRooms.length}</span> phòng, <span class="font-bold">${allBookings.length}</span> lượt đặt phòng.`;
+            setupFilters();
+            renderInitialCalendar();
+            setTimeout(scrollToToday, 100);
+        } catch (e) {
+            console.error("Lỗi khi lấy dữ liệu:", e);
+            showError(e.message);
+        } finally {
+            if (!isSyncing) showLoader(false);
+        }
+    }
+
+    async function triggerSync() {
+        el.syncBtn.disabled = true;
+        const spinner = el.syncBtn.querySelector('svg:not(#sync-icon)');
+        el.syncIcon.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+        el.syncText.textContent = 'Đang cập nhật...';
+        el.statusBar.textContent = 'Đang tải dữ liệu mới nhất...';
+        try {
+            await fetchData(true);
+            el.statusBar.innerHTML = `<span class="text-green-600 font-bold">Cập nhật hoàn tất!</span>`;
+        } catch (e) {
+            showError(e.message);
+        } finally {
+            el.syncBtn.disabled = false;
+            el.syncIcon.classList.remove('hidden');
+            if (spinner) spinner.classList.add('hidden');
+            el.syncText.textContent = 'Cập nhật';
+        }
+    }
+
+    async function triggerSoftHold() {
+        alert('Tính năng "Giữ chỗ tạm" đang được phát triển. Sẽ cần nâng cấp backend để lưu trữ trạng thái này.');
+    }
+
+    function renderCalendarContent() {
+        const year = displayDate.getFullYear();
+        const month = displayDate.getMonth();
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 0);
+
+        const headerRow = document.createElement('tr');
+        headerRow.className = 'sticky-header';
+        el.calendarHeader.innerHTML = '';
+        el.calendarBody.innerHTML = '';
+        
+        const roomHeaderCell = document.createElement('th');
+        roomHeaderCell.className = 'sticky-col top-left-corner p-1 text-left';
+        roomHeaderCell.textContent = 'Phòng';
+        headerRow.appendChild(roomHeaderCell);
+        
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+        
+        for (let tempDate = new Date(startDate); tempDate <= endDate; tempDate.setDate(tempDate.getDate() + 1)) {
+            const dateStr = toYYYYMMDD(tempDate);
+            const dayHeaderCell = document.createElement('th');
+            dayHeaderCell.className = 'day-header font-normal border-b border-l';
+            dayHeaderCell.dataset.date = dateStr;
+            
+            const dayOfWeek = tempDate.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+                dayHeaderCell.classList.add('text-red-500');
+            }
+            
+            dayHeaderCell.innerHTML = `<span class="text-[10px] text-gray-500">${dayNames[dayOfWeek]}</span><br><span class="font-medium text-[11px]">${tempDate.getDate()}</span>`;
+            if (tempDate.getTime() === today.getTime()) {
+                dayHeaderCell.querySelector('span:last-child').classList.add('today-header-span');
+                dayHeaderCell.classList.add('today-line');
+            }
+            headerRow.appendChild(dayHeaderCell);
+        }
+        el.calendarHeader.appendChild(headerRow);
+
+        const selectedRegion = el.regionFilter.value;
+        const selectedProvince = el.provinceFilter.value;
+        const selectedBuilding = el.buildingFilter.value;
+
+        const filteredRooms = allRooms.filter(room => {
+            const regionMatch = selectedRegion === 'all' || room.building_region === selectedRegion;
+            const provinceMatch = selectedProvince === 'all' || room.building_province === selectedProvince;
+            const buildingMatch = selectedBuilding === 'all' || room.building === selectedBuilding;
+            return regionMatch && provinceMatch && buildingMatch;
+        });
+
+        filteredRooms.forEach(room => {
+            const roomRow = document.createElement('tr');
+            roomRow.dataset.roomName = String(room.name ?? "").trim();
+            const roomNameCell = document.createElement('td');
+            roomNameCell.className = 'sticky-col p-1.5 border-b';
+            const cleanLink = cleanAirbnbLink(room.link);
+            roomNameCell.innerHTML = `<div class="flex items-center justify-start h-full truncate"><span class="font-medium text-[11px] truncate" title="${room.name}">${room.name}</span><span class="mx-1 text-gray-300">|</span><a href="${cleanLink}" target="_blank" class="text-[10px] text-blue-600 hover:underline flex-shrink-0">Link</a></div>`;
+            roomRow.appendChild(roomNameCell);
+            
+            for (let tempDate2 = new Date(startDate); tempDate2 <= endDate; tempDate2.setDate(tempDate2.getDate() + 1)) {
+                const dayCell = document.createElement('td');
+                dayCell.className = 'day-cell';
+                dayCell.dataset.date = toYYYYMMDD(tempDate2);
+                const bookingStatus = isBooked(room.name, tempDate2);
+                if (bookingStatus) {
+                    dayCell.classList.add(bookingStatus.hold ? 'soft-hold' : 'booked');
+                    if (!bookingStatus.hold) dayCell.innerHTML = '';
+                } else if (tempDate2 < today) {
+                    dayCell.classList.add('past-day');
+                } else {
+                    dayCell.innerHTML = `<span class="price">${room.price || ''}</span>`;
+                }
+                if (tempDate2.getTime() === today.getTime()) {
+                    dayCell.classList.add('today-line');
+                }
+                roomRow.appendChild(dayCell);
+            }
+            el.calendarBody.appendChild(roomRow);
+        });
+        el.monthYearDisplay.textContent = `Tháng ${displayDate.getMonth() + 1}, ${displayDate.getFullYear()}`;
+    }
+
+    // *** BẮT ĐẦU KHỐI MÃ ĐÚNG: Logic bộ lọc mới, chống lặp vô tận ***
+    function setupFilters() {
+        const regions = [...new Set(allRooms.map(room => room.building_region).filter(Boolean))];
+        populateDropdown(el.regionFilter, regions, 'Tất cả Khu vực');
+        updateDependentFilters();
+    }
+
+    function updateDependentFilters() {
+        const selectedRegion = el.regionFilter.value;
+        const selectedProvince = el.provinceFilter.value;
+
+        const relevantProvinces = [...new Set(allRooms
+            .filter(r => selectedRegion === 'all' || r.building_region === selectedRegion)
+            .map(r => r.building_province).filter(Boolean))];
+        populateDropdown(el.provinceFilter, relevantProvinces, 'Tất cả Tỉnh/Thành', selectedProvince);
+
+        const relevantBuildings = [...new Set(allRooms
+            .filter(r => (selectedRegion === 'all' || r.building_region === selectedRegion))
+            .filter(r => (el.provinceFilter.value === 'all' || r.building_province === el.provinceFilter.value))
+            .map(r => r.building).filter(Boolean))];
+        populateDropdown(el.buildingFilter, relevantBuildings, 'Tất cả Tòa nhà', el.buildingFilter.value);
+    }
+
+    function populateDropdown(selectElement, items, defaultOptionText, selectedValue) {
+        const currentValue = selectElement.value;
+        selectElement.innerHTML = `<option value="all">${defaultOptionText}</option>`;
+        items.sort((a, b) => a.localeCompare(b, 'vi')).forEach(item => {
+            const option = document.createElement('option');
+            option.value = item;
+            option.textContent = item;
+            selectElement.appendChild(option);
+        });
+        if (items.includes(currentValue) && selectedValue !== 'all') {
+            selectElement.value = currentValue;
+        } else {
+            selectElement.value = 'all';
+        }
+    }
+    // *** KẾT THÚC KHỐI MÃ ĐÚNG ***
+
+    function clearSelection() {
+        selection = { start: null, end: null, room: null };
+        document.querySelectorAll('.day-cell.selected-day').forEach(cell => cell.classList.remove('selected-day'));
+        el.selectionActionBar.classList.add('translate-y-full');
+    }
+
+    function highlightSelection() {
+        document.querySelectorAll('.day-cell.selected-day').forEach(cell => cell.classList.remove('selected-day'));
+        if (!selection.start || !selection.end || !selection.room) return;
+        const start = Math.min(selection.start.getTime(), selection.end.getTime());
+        const end = Math.max(selection.start.getTime(), selection.end.getTime());
+        let isValid = true;
+        for(let d = new Date(start); d.getTime() <= end; d.setDate(d.getDate() + 1)) {
+            const cell = document.querySelector(`tr[data-room-name="${selection.room}"] .day-cell[data-date="${toYYYYMMDD(d)}"]`);
+            if(cell && (cell.classList.contains('booked') || cell.classList.contains('past-day') || cell.classList.contains('soft-hold'))) {
+                isValid = false; break;
+            }
+        }
+        if(isValid) {
+            for(let d = new Date(start); d.getTime() <= end; d.setDate(d.getDate() + 1)) {
+                const cell = document.querySelector(`tr[data-room-name="${selection.room}"] .day-cell[data-date="${toYYYYMMDD(d)}"]`);
+                if(cell) cell.classList.add('selected-day');
+            }
+        } else {
+            clearSelection();
+        }
+    }
+    
+    function finalizeSelection() {
+        const selectedCells = document.querySelectorAll(`tr[data-room-name="${selection.room}"] .day-cell.selected-day`);
+        if (selectedCells.length === 0) { clearSelection(); return; }
+        const startDate = parseDateFromStr(selectedCells[0].dataset.date);
+        const endDate = parseDateFromStr(selectedCells[selectedCells.length - 1].dataset.date);
+        const checkoutDate = new Date(endDate); checkoutDate.setDate(checkoutDate.getDate() + 1);
+        const nights = selectedCells.length;
+        el.selectionInfoText.textContent = `${selection.room} | ${formatDate(startDate)} → ${formatDate(checkoutDate)} (${nights} đêm)`;
+        el.selectionActionBar.classList.remove('translate-y-full');
+    }
+    
+    function showContactModal() {
+        if (!selection.room) { alert("Vui lòng chọn phòng và ngày trước khi soạn tin."); return; }
+        const selectedCells = document.querySelectorAll(`tr[data-room-name="${selection.room}"] .day-cell.selected-day`);
+        if (!selectedCells.length) { alert("Bạn chưa chọn khoảng ngày hợp lệ."); return; }
+        const roomData = allRooms.find( r => String(r.name ?? "").trim() === String(selection.room ?? "").trim()) || {};
+        const contactTel = roomData.contact || DEFAULT_PHONE;
+        const start = parseDateFromStr(selectedCells[0].dataset.date);
+        const end = parseDateFromStr(selectedCells[selectedCells.length - 1].dataset.date);
+        const checkout = new Date(end); checkout.setDate(checkout.getDate() + 1);
+        const nights = selectedCells.length;
+        el.modalInfo.innerHTML = `Phòng <strong class="text-blue-600">${selection.room}</strong><br>Check-in: <strong class="text-blue-600">${formatDate(start)}</strong><br>Check-out: <strong class="text-blue-600">${formatDate(checkout)}</strong> (${nights} đêm)`;
+        const msg = `Chào bạn, tôi muốn đặt phòng ${selection.room} từ ${formatDate(start)} đến ${formatDate(checkout)} (${nights} đêm).`;
+        el.callBtn.href = `tel:${contactTel}`;
+        el.zaloBtn.href = `https://zalo.me/${contactTel}`;
+        el.whatsappBtn.href = `https://wa.me/${contactTel}?text=${encodeURIComponent(msg)}`;
+        if (el.depositBtn) {
+            const amount = roomData.deposit || 500000;
+            const txnNote = `${selection.room}-${formatDate(start)}`;
+            el.depositBtn.href = `https://your-bank-gateway.example/pay?amount=${amount}&note=${encodeURIComponent(txnNote)}`;
+        }
+        el.contactModal.classList.remove("opacity-0", "pointer-events-none");
+    }
+
+    const formatDate = (date) => `${date.getDate()}/${date.getMonth() + 1}`;
+    const toYYYYMMDD = (date) => { const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, '0'), d = String(date.getDate()).padStart(2, '0'); return `${y}-${m}-${d}`; };
+    const parseDateFromStr = (dateStr) => { const [y, m, d] = dateStr.split('-').map(Number); return new Date(y, m - 1, d); };
+    function showLoader(show) { el.loaderContainer.style.display = show ? 'flex' : 'none'; el.calendarWrapper.style.display = show ? 'none' : 'block'; }
+    function showError(message) { el.errorMessageDiv.textContent = 'Đã xảy ra lỗi: ' + message; el.errorMessageDiv.style.display = 'block'; el.loaderContainer.style.display = 'none'; el.statusBar.textContent = "Tải dữ liệu thất bại."; }
+    function isBooked(roomName, date) { const checkTime = date.getTime(); for (const booking of allBookings) { if (String(booking.roomName ?? "").trim() === String(roomName ?? "").trim()) { const startTime = booking.startDate.getTime(); const endTime = booking.endDate.getTime(); if (checkTime >= startTime && checkTime < endTime) return {hold: booking.hold}; } } return null; }
+    function cleanAirbnbLink(url) { if (!url || typeof url !== 'string') return '#'; const i = url.indexOf('airbnb.com'); if (i !== -1) { let clean = url.substring(i); return !clean.startsWith('http') ? 'https://' + clean : clean; } return url; }
+    
+    function renderInitialCalendar() {
+        renderCalendarContent();
+    }
+
+    function scrollToToday() { 
+        const todayHeader = document.querySelector(`th[data-date="${toYYYYMMDD(new Date())}"]`); 
+        if (todayHeader) {
+            const stickyColWidth = el.calendarHeader.querySelector('.sticky-col').offsetWidth;
+            const scrollPos = todayHeader.offsetLeft - stickyColWidth;
+            el.calendarGrid.scrollLeft = scrollPos;
+        }
+    }
+    
+    const updateMonthNav = (offset) => { 
+        displayDate.setMonth(displayDate.getMonth() + offset, 1);
+        renderCalendarContent();
+    };
+    
+    // --- CAC SU KIEN ---
+    el.prevMonthBtn.addEventListener('click', () => updateMonthNav(-1));
+    el.nextMonthBtn.addEventListener('click', () => updateMonthNav(1));
+    el.todayBtn.addEventListener('click', () => {
+        displayDate = new Date();
+        renderCalendarContent();
+        setTimeout(scrollToToday, 100);
+    });
+    el.syncBtn.addEventListener('click', triggerSync);
+    
+    // *** BẮT ĐẦU SỬA LỖI: Gắn sự kiện mới cho các bộ lọc ***
+    el.regionFilter.addEventListener('change', () => {
+        updateDependentFilters();
+        renderCalendarContent();
+    });
+    el.provinceFilter.addEventListener('change', () => {
+        updateDependentFilters();
+        renderCalendarContent();
+    });
+    el.buildingFilter.addEventListener('change', renderCalendarContent);
+    // *** KẾT THÚC SỬA LỖI ***
+
+    el.calendarGrid.addEventListener('scroll', () => { /* Logic cuộn có thể được thêm vào đây */ });
+    
+    el.calendarBody.addEventListener('mousedown', (e) => {
+        const cell = e.target.closest('.day-cell');
+        if (cell && !cell.classList.contains('booked') && !cell.classList.contains('past-day') && !cell.classList.contains('soft-hold')) {
+            e.preventDefault();
+            isSelecting = true;
+            clearSelection();
+            selection.room = cell.parentElement.dataset.roomName;
+            selection.start = parseDateFromStr(cell.dataset.date);
+            selection.end = parseDateFromStr(cell.dataset.date);
+            highlightSelection();
+        }
+    });
+    el.calendarBody.addEventListener('mouseover', (e) => {
+        if (isSelecting) {
+            const cell = e.target.closest('.day-cell');
+            if (cell && cell.parentElement.dataset.roomName === selection.room) {
+                selection.end = parseDateFromStr(cell.dataset.date);
+                highlightSelection();
+            }
+        }
+    });
+    window.addEventListener('mouseup', () => {
+        if (isSelecting) {
+            isSelecting = false;
+            finalizeSelection();
+        }
+    });
+
+    el.composeMessageBtn.addEventListener('click', showContactModal);
+    el.cancelSelectionBtn.addEventListener('click', clearSelection);
+    el.blockRoomBtn.addEventListener('click', triggerSoftHold);
+    el.closeModalBtn.addEventListener('click', () => {
+        el.contactModal.classList.remove('opacity-100');
+        el.contactModal.classList.add('opacity-0', 'pointer-events-none');
+    });
+    
+    function setupAddRoomForm() {
+        populateDropdown(el.formRegionSelect, Object.keys(VIETNAM_REGIONS), 'Chọn Khu vực');
+        el.formProvinceSelect.innerHTML = '<option value="">-- Chọn Tỉnh/Thành --</option>';
+        el.formRegionSelect.addEventListener('change', () => {
+            const selectedRegion = el.formRegionSelect.value;
+            const provinces = VIETNAM_REGIONS[selectedRegion] || [];
+            populateDropdown(el.formProvinceSelect, provinces, 'Chọn Tỉnh/Thành');
+        });
+    }
+
+    el.addRoomBtn.addEventListener('click', () => {
+        setupAddRoomForm();
+        el.addRoomModal.classList.remove('opacity-0', 'pointer-events-none');
+    });
+    el.closeAddRoomModalBtn.addEventListener('click', () => {
+        el.addRoomModal.classList.add('opacity-0', 'pointer-events-none');
+        el.addRoomForm.reset();
+        el.addRoomStatus.textContent = '';
+    });
+
+    el.addRoomForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  el.saveRoomBtn.disabled = true;
+  el.addRoomStatus.textContent = 'Đang lưu...';
+  el.addRoomStatus.className = 'text-sm mt-2 text-blue-600';
+
+  const formData = new FormData(e.target);
+  const payload = Object.fromEntries(formData.entries());
+
+  try {
+    const response = await fetch(WRITE_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    el.addRoomStatus.textContent = 'Gửi yêu cầu thành công! Đang cập nhật dữ liệu...';
+    el.addRoomStatus.className = 'text-sm mt-2 text-green-600';
+    e.target.reset();
+
+    // Chờ Google Sheet cập nhật
+    setTimeout(async () => {
+      el.addRoomModal.classList.add('opacity-0', 'pointer-events-none');
+      el.addRoomStatus.textContent = '';
+
+      try {
+        // Gọi xoá cache backend
+        const resp = await fetch('https://ical-sync-backend.vercel.app/api/data?forceSync=1', {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (!resp.ok) {
+          throw new Error(`Lỗi HTTP ${resp.status}`);
+        }
+
+        const result = await resp.json();
+        console.log('✅ Đã xoá cache backend:', result);
+
+        // Gọi lại triggerSync để cập nhật lịch
+        await triggerSync();
+      } catch (err) {
+        console.error('❌ Lỗi khi gọi forceSync:', err.message || err);
+        el.statusBar.textContent = 'Lỗi khi xoá cache backend!';
+      }
+
+    }, 3000); // Delay nhẹ để sheet và iCal kịp cập nhật
+
+  } catch (error) {
+    console.error('Lỗi khi thêm phòng:', error);
+    el.addRoomStatus.textContent = `Lỗi: ${error.message}`;
+    el.addRoomStatus.className = 'text-sm mt-2 text-red-600';
+  } finally {
+    el.saveRoomBtn.disabled = false;
+  }
+});
+
+    fetchData();
+});
+</script>
+
+</body>
+</html>
