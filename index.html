@@ -80,9 +80,9 @@
         <div id="mobileFilterPanel" class="fixed bottom-0 left-0 right-0 bg-white p-4 rounded-t-2xl shadow-xl hidden z-50">
         <input type="text" id="filter-keyword" placeholder="Tên phòng..." class="w-full border px-3 py-2 rounded mb-2" />
         <input type="date" id="filter-date" class="w-full border px-3 py-2 rounded mb-2" />
-        <select id="filter-building" class="w-full border px-3 py-2 rounded mb-2"></select>
-        <select id="filter-region" class="w-full border px-3 py-2 rounded mb-2"></select>
-        <select id="filter-province" class="w-full border px-3 py-2 rounded mb-2"></select>
+        <select id="mobile-region-filter" class="w-full border px-3 py-2 rounded mb-2"></select>
+        <select id="mobile-province-filter" class="w-full border px-3 py-2 rounded mb-2"></select>
+        <select id="mobile-building-filter" class="w-full border px-3 py-2 rounded mb-2"></select>
         <button onclick="applyMobileFilters()" class="w-full bg-green-600 text-white py-2 rounded-lg mt-2">Lọc ngay</button>
         <button onclick="toggleMobileFilter()" class="w-full text-sm text-gray-500 mt-1">Đóng</button>
         </div>
@@ -272,6 +272,7 @@
 
             el.statusBar.innerHTML = `Tải thành công: <span class="font-bold">${allRooms.length}</span> phòng, <span class="font-bold">${allBookings.length}</span> lượt đặt phòng.`;
             setupFilters();
+            setupMobileFilters();
             renderInitialCalendar();
             setTimeout(scrollToToday, 100);
         } catch (e) {
@@ -399,6 +400,36 @@
         populateDropdown(el.regionFilter, regions, 'Tất cả Khu vực');
         updateDependentFilters();
     }
+    function setupMobileFilters() {
+        populateDropdown(document.getElementById('mobile-region-filter'), [...new Set(allRooms.map(r => r.building_region).filter(Boolean))], 'Tất cả Khu vực');
+        updateMobileDependentFilters();
+
+        // Gắn sự kiện thay đổi để cập nhật tiếp theo
+        document.getElementById('mobile-region-filter').addEventListener('change', updateMobileDependentFilters);
+        document.getElementById('mobile-province-filter').addEventListener('change', updateMobileDependentFilters);
+        }
+
+        function updateMobileDependentFilters() {
+        const regionSelect = document.getElementById('mobile-region-filter');
+        const provinceSelect = document.getElementById('mobile-province-filter');
+        const buildingSelect = document.getElementById('mobile-building-filter');
+
+        const selectedRegion = regionSelect.value;
+        const provinces = [...new Set(allRooms
+            .filter(r => selectedRegion === 'all' || r.building_region === selectedRegion)
+            .map(r => r.building_province).filter(Boolean))];
+
+        populateDropdown(provinceSelect, provinces, 'Tất cả Tỉnh/Thành');
+
+        const selectedProvince = provinceSelect.value;
+        const buildings = [...new Set(allRooms
+            .filter(r => selectedRegion === 'all' || r.building_region === selectedRegion)
+            .filter(r => selectedProvince === 'all' || r.building_province === selectedProvince)
+            .map(r => r.building).filter(Boolean))];
+
+        populateDropdown(buildingSelect, buildings, 'Tất cả Tòa nhà');
+        }
+
 
     function updateDependentFilters() {
         const selectedRegion = el.regionFilter.value;
@@ -670,15 +701,35 @@ function toggleMobileFilter() {
 }
 
 function applyMobileFilters() {
-  renderRoomTable(); // Hàm đã có sẵn trong code
-  toggleMobileFilter();
+  const keyword = document.getElementById('filter-keyword').value.trim().toLowerCase();
+  const date = document.getElementById('filter-date').value;
+  const region = document.getElementById('mobile-region-filter').value;
+  const province = document.getElementById('mobile-province-filter').value;
+  const building = document.getElementById('mobile-building-filter').value;
+
+  // Gán lại filter desktop tương ứng
+  el.regionFilter.value = region;
+  updateDependentFilters(); // cập nhật Tỉnh/Thành và Tòa nhà
+  el.provinceFilter.value = province;
+  updateDependentFilters();
+  el.buildingFilter.value = building;
+
+  el.keywordFilter = keyword;
+  el.dateFilter = date;
+
+  renderCalendarContent(); // render lại bảng
+  toggleMobileFilter();    // đóng popup
 }
 
 // Lọc tên phòng realtime
 const keywordInput = document.getElementById('filter-keyword');
 if (keywordInput) {
-  keywordInput.addEventListener('input', () => renderCalendarContent());
+  keywordInput.addEventListener('input', () => {
+    el.keywordFilter = keywordInput.value.trim().toLowerCase();
+    renderCalendarContent();
+  });
 }
+
 </script>
 
 </body>
