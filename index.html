@@ -351,10 +351,7 @@
         const selectedBuilding = el.buildingFilter.value;
         const keyword = el.keywordFilter || '';
         const filterDate = el.dateFilter || '';
-
-
-       const keyword = document.getElementById('filter-keyword')?.value?.trim().toLowerCase();
-
+       
         const filteredRooms = allRooms.filter(room => {
             const regionMatch = selectedRegion === 'all' || room.building_region === selectedRegion;
             const provinceMatch = selectedProvince === 'all' || room.building_province === selectedProvince;
