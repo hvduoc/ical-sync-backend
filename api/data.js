@@ -26,12 +26,14 @@ const allowCors = fn => async (req, res) => {
 };
 
 // --- HÀM XỬ LÝ CHÍNH ---
-const handler = async (req, res) => {
-  try {
-    if (req.query?.forceSync === '1') {
+const url = new URL(req.url, `http://${req.headers.host}`);
+const forceSync = url.searchParams.get('forceSync');
+
+if (forceSync === '1') {
   await kv.del(CACHE_KEY);
   console.log('Force refresh: cache cleared manually.');
 }
+
 
 let cachedData = await kv.get(CACHE_KEY);
 if (cachedData) {
