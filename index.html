@@ -71,6 +71,22 @@
             <h2 id="current-month-year" class="text-base font-bold text-center w-32"></h2>
             <button id="next-month" class="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded-md font-semibold transition-colors text-xs">&gt;</button>
         </div>
+        <!-- Nút mở popup filter trên mobile -->
+        <button class="md:hidden px-4 py-2 bg-blue-600 text-white rounded-lg mb-4" onclick="toggleMobileFilter()">
+        🔍 Bộ lọc
+        </button>
+
+        <!-- Popup filter -->
+        <div id="mobileFilterPanel" class="fixed bottom-0 left-0 right-0 bg-white p-4 rounded-t-2xl shadow-xl hidden z-50">
+        <input type="text" id="filter-keyword" placeholder="Tên phòng..." class="w-full border px-3 py-2 rounded mb-2" />
+        <input type="date" id="filter-date" class="w-full border px-3 py-2 rounded mb-2" />
+        <select id="filter-building" class="w-full border px-3 py-2 rounded mb-2"></select>
+        <select id="filter-region" class="w-full border px-3 py-2 rounded mb-2"></select>
+        <select id="filter-province" class="w-full border px-3 py-2 rounded mb-2"></select>
+        <button onclick="applyMobileFilters()" class="w-full bg-green-600 text-white py-2 rounded-lg mt-2">Lọc ngay</button>
+        <button onclick="toggleMobileFilter()" class="w-full text-sm text-gray-500 mt-1">Đóng</button>
+        </div>
+
         <!-- Nhóm nút hành động (Sẽ ở hàng dưới trên mobile) -->
         <div class="flex items-center flex-wrap gap-2 justify-center">
             <button id="today-btn" class="px-3 py-1 bg-blue-500 text-white hover:bg-blue-600 rounded-md font-semibold transition-colors text-xs">Hôm nay</button>
@@ -333,12 +349,17 @@
         const selectedProvince = el.provinceFilter.value;
         const selectedBuilding = el.buildingFilter.value;
 
+       const keyword = document.getElementById('filter-keyword')?.value?.trim().toLowerCase();
+
         const filteredRooms = allRooms.filter(room => {
-            const regionMatch = selectedRegion === 'all' || room.building_region === selectedRegion;
-            const provinceMatch = selectedProvince === 'all' || room.building_province === selectedProvince;
-            const buildingMatch = selectedBuilding === 'all' || room.building === selectedBuilding;
-            return regionMatch && provinceMatch && buildingMatch;
+        const regionMatch = selectedRegion === 'all' || room.building_region === selectedRegion;
+        const provinceMatch = selectedProvince === 'all' || room.building_province === selectedProvince;
+        const buildingMatch = selectedBuilding === 'all' || room.building === selectedBuilding;
+        const keywordMatch = !keyword || room.name?.toLowerCase().includes(keyword);
+
+        return regionMatch && provinceMatch && buildingMatch && keywordMatch;
         });
+
 
         filteredRooms.forEach(room => {
             const roomRow = document.createElement('tr');
@@ -641,6 +662,23 @@
 
     fetchData();
 });
+</script>
+<script>
+function toggleMobileFilter() {
+  const panel = document.getElementById('mobileFilterPanel');
+  panel.classList.toggle('hidden');
+}
+
+function applyMobileFilters() {
+  renderRoomTable(); // Hàm đã có sẵn trong code
+  toggleMobileFilter();
+}
+
+// Lọc tên phòng realtime
+const keywordInput = document.getElementById('filter-keyword');
+if (keywordInput) {
+  keywordInput.addEventListener('input', () => renderCalendarContent());
+}
 </script>
 
 </body>
