@@ -349,18 +349,19 @@
         const selectedRegion = el.regionFilter.value;
         const selectedProvince = el.provinceFilter.value;
         const selectedBuilding = el.buildingFilter.value;
+        const keyword = el.keywordFilter || '';
+        const filterDate = el.dateFilter || '';
+
 
        const keyword = document.getElementById('filter-keyword')?.value?.trim().toLowerCase();
 
         const filteredRooms = allRooms.filter(room => {
-        const regionMatch = selectedRegion === 'all' || room.building_region === selectedRegion;
-        const provinceMatch = selectedProvince === 'all' || room.building_province === selectedProvince;
-        const buildingMatch = selectedBuilding === 'all' || room.building === selectedBuilding;
-        const keywordMatch = !keyword || room.name?.toLowerCase().includes(keyword);
-
-        return regionMatch && provinceMatch && buildingMatch && keywordMatch;
-        });
-
+            const regionMatch = selectedRegion === 'all' || room.building_region === selectedRegion;
+            const provinceMatch = selectedProvince === 'all' || room.building_province === selectedProvince;
+            const buildingMatch = selectedBuilding === 'all' || room.building === selectedBuilding;
+            const keywordMatch = !keyword || room.name.toLowerCase().includes(keyword);
+            return regionMatch && provinceMatch && buildingMatch && keywordMatch;
+            });
 
         filteredRooms.forEach(room => {
             const roomRow = document.createElement('tr');
@@ -701,25 +702,26 @@ function toggleMobileFilter() {
 }
 
 function applyMobileFilters() {
-  const keyword = document.getElementById('filter-keyword').value.trim().toLowerCase();
-  const date = document.getElementById('filter-date').value;
-  const region = document.getElementById('mobile-region-filter').value;
-  const province = document.getElementById('mobile-province-filter').value;
-  const building = document.getElementById('mobile-building-filter').value;
+  // Lấy giá trị từ popup mobile
+  const keyword = document.getElementById('filter-keyword')?.value?.trim().toLowerCase() || '';
+  const date = document.getElementById('filter-date')?.value || '';
+  const region = document.getElementById('mobile-region-filter')?.value || 'all';
+  const province = document.getElementById('mobile-province-filter')?.value || 'all';
+  const building = document.getElementById('mobile-building-filter')?.value || 'all';
 
-  // Gán lại filter desktop tương ứng
+  // Cập nhật bộ lọc chính
   el.regionFilter.value = region;
-  updateDependentFilters(); // cập nhật Tỉnh/Thành và Tòa nhà
   el.provinceFilter.value = province;
-  updateDependentFilters();
   el.buildingFilter.value = building;
 
+  // Gắn keyword và date tạm vào biến global để lọc
   el.keywordFilter = keyword;
   el.dateFilter = date;
 
-  renderCalendarContent(); // render lại bảng
-  toggleMobileFilter();    // đóng popup
+  renderCalendarContent(); // Vẽ lại lịch
+  toggleMobileFilter();    // Ẩn popup
 }
+
 
 // Lọc tên phòng realtime
 const keywordInput = document.getElementById('filter-keyword');
